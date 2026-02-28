@@ -17,32 +17,16 @@ st.markdown("""
     <style>
     .stApp { background-color: #DBCFBB; color: #36454F; }
     h1, h2, h3 { color: #556B2F !important; font-family: 'Nanum Gothic', sans-serif; margin-bottom: 5px; }
-    
-    /* 상단 안내문 박스 (공백을 확 줄였습니다) */
-    .intro-box { 
-        background-color: rgba(255, 255, 255, 0.5); padding: 20px 25px; 
-        border-radius: 15px; border-left: 8px solid #556B2F; line-height: 1.5; 
-        margin-top: 10px; margin-bottom: 15px; 
-    }
-    
-    .shop-btn { 
-        display: inline-block; padding: 6px 14px; margin: 4px; 
-        background-color: white; border: 1px solid #5f0080; 
-        border-radius: 20px; font-size: 0.85em; text-decoration: none !important; 
-        color: #5f0080 !important; font-weight: bold; 
-    }
+    .intro-box { background-color: rgba(255, 255, 255, 0.5); padding: 20px 25px; border-radius: 15px; border-left: 8px solid #556B2F; line-height: 1.5; margin-top: 10px; margin-bottom: 15px; }
+    .shop-btn { display: inline-block; padding: 6px 14px; margin: 4px; background-color: white; border: 1px solid #5f0080; border-radius: 20px; font-size: 0.85em; text-decoration: none !important; color: #5f0080 !important; font-weight: bold; }
     .shop-btn:hover { background-color: #5f0080; color: white !important; }
-    
-    .stButton>button { 
-        background-color: #556B2F; color: white; border-radius: 8px; 
-        width: 100%; height: 3.5em; font-weight: bold; margin-top: 5px;
-    }
+    .stButton>button { background-color: #556B2F; color: white; border-radius: 8px; width: 100%; height: 3.5em; font-weight: bold; margin-top: 5px; }
     </style>
     """, unsafe_allow_html=True)
 
-# 3. 메인 UI (불필요한 줄바꿈 제거)
+# 3. 메인 UI
 st.title("🍳 쿠킹클론 (Cooking Clone)")
-st.markdown('### **"찰나의 미식, 영원한 레시피가 됩니다."**')
+st.markdown('### **"찰나의 미식, 당신의 주방에서 영원한 레시피가 됩니다."**')
 
 st.markdown("""
 <div class="intro-box">
@@ -56,36 +40,54 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
+# --- 핵심 수정: 에러를 방지하는 '자동 엔진 탐색기' ---
+@st.cache_resource
+def initialize_engine(api_key):
+    if not api_key: return None
+    try:
+        genai.configure(api_key=api_key)
+        # 사용 가능한 모델 목록을 불러와서 가장 적합한 것을 자동으로 매칭합니다.
+        models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+        for target in ['gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-pro-vision']:
+            for m in models:
+                if target in m: return genai.GenerativeModel(m)
+        return genai.GenerativeModel(models[0]) if models else None
+    except Exception as e:
+        return None
+
 # 4. 분석 로직
 if API_KEY:
-    genai.configure(api_key=API_KEY)
-    model = genai.GenerativeModel('gemini-1.5-flash')
+    model = initialize_engine(API_KEY)
     source = st.file_uploader("사진을 선택하세요", type=["jpg", "png", "jpeg"])
     
     if source:
         img = Image.open(source)
         st.image(img, use_container_width=True)
         if st.button("✨ 비법 복제하기"):
-            with st.spinner("미식 데이터를 해독 중입니다..."):
-                prompt = "당신은 미식 가이드 '쿠킹클론'입니다. 요리 분석, 비법, 역설계 재료, 홈스타일 레시피 순으로 작성하세요. 마지막에 [Ingredients: 재료1, 재료2, 재료3, 재료4, 재료5] 형식을 꼭 포함하세요."
-                res = model.generate_content([prompt, img])
-                
-                # 기호 오류 방지를 위한 텍스트 세탁
-                clean_text = re.sub(r'```[a-zA-Z]*\n', '', res.text)
-                clean_text = clean_text.replace('```', '')
-                
-                # 핵심 해결: HTML 박스로 감싸지 않고 순수 텍스트로 출력하여 글씨체(굵기, 제목 등)를 살립니다.
-                st.markdown("---")
-                st.markdown(clean_text)
-                st.markdown("---")
-                
-                if "[Ingredients:" in clean_text:
+            if model is None:
+                st.error("AI 엔진을 불러오지 못했습니다. API 키를 다시 확인해 주세요.")
+            else:
+                with st.spinner("미식 데이터를 해독 중입니다..."):
                     try:
-                        ings = clean_text.split("[Ingredients:")[1].split("]")[0].split(",")
-                        st.markdown("#### 🛒 추천 신선 재료 (마켓컬리)")
-                        links = "".join([f'<a href="https://www.kurly.com/search?keyword={urllib.parse.quote(i.strip())}" target="_blank" class="shop-btn">💜 {i.strip()} 컬리 장보기</a>' for i in ings[:5]])
-                        st.markdown(f'<div style="text-align:center;">{links}</div>', unsafe_allow_html=True)
-                    except:
-                        pass
+                        prompt = "당신은 미식 가이드 '쿠킹클론'입니다. 요리 분석, 비법, 역설계 재료, 홈스타일 레시피 순으로 작성하세요. 마지막에 [Ingredients: 재료1, 재료2, 재료3, 재료4, 재료5] 형식을 꼭 포함하세요."
+                        res = model.generate_content([prompt, img])
+                        
+                        clean_text = re.sub(r'```[a-zA-Z]*\n', '', res.text)
+                        clean_text = clean_text.replace('```', '')
+                        
+                        st.divider()
+                        st.markdown(clean_text)
+                        st.divider()
+                        
+                        if "[Ingredients:" in clean_text:
+                            try:
+                                ings = clean_text.split("[Ingredients:")[1].split("]")[0].split(",")
+                                st.markdown("#### 🛒 추천 신선 재료 (마켓컬리)")
+                                links = "".join([f'<a href="https://www.kurly.com/search?keyword={urllib.parse.quote(i.strip())}" target="_blank" class="shop-btn">💜 {i.strip()} 컬리 장보기</a>' for i in ings[:5]])
+                                st.markdown(f'<div style="text-align:center;">{links}</div>', unsafe_allow_html=True)
+                            except:
+                                pass
+                    except Exception as e:
+                        st.error(f"분석 중 오류가 발생했습니다: {e}")
 else:
     st.warning("Secrets 설정에서 API_KEY를 입력해 주세요.")
