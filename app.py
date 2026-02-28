@@ -5,23 +5,22 @@ import io
 import urllib.parse
 
 # ==========================================
-# 🔑 보안 설정: Streamlit Cloud Secrets 사용
+# 🔑 보안 설정 (Streamlit Cloud Secrets)
 # ==========================================
 try:
     API_KEY = st.secrets["API_KEY"]
 except:
-    API_KEY = "여기에_키를_넣으세요" # 로컬 테스트용
+    API_KEY = "여기에_키를_넣으세요"
 
-# --- 1. 앱 디자인 (뮤트 톤 & 세련된 감성) ---
+# --- 1. 앱 디자인 설정 (뮤트 톤 & 세련된 감성) ---
 st.set_page_config(page_title="Cooking Clone", layout="centered", page_icon="🍳")
 
+# CSS 스타일 적용 (화면 디자인을 담당합니다)
 st.markdown("""
     <style>
-    /* 전체 배경 및 폰트 설정 */
     .stApp { background-color: #DBCFBB; color: #36454F; }
     h1, h2, h3 { color: #556B2F !important; font-family: 'Nanum Gothic', sans-serif; }
     
-    /* 버튼 스타일 */
     .stButton>button { 
         background-color: #556B2F; color: white; border-radius: 8px; 
         width: 100%; height: 3.5em; font-weight: bold; border: none;
@@ -36,7 +35,7 @@ st.markdown("""
         margin-bottom: 25px;
     }
     
-    /* 쇼핑 버튼 스타일 (마켓컬리 브랜드 컬러 느낌 반영) */
+    /* 마켓컬리 쇼핑 버튼 스타일 */
     .shop-btn {
         display: inline-block; padding: 6px 14px; margin: 4px;
         background-color: white; border: 1px solid #5f0080;
@@ -47,38 +46,34 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. 쿠킹클론 엔진 자동 탐색 ---
+# --- 2. AI 엔진 초기화 ---
 @st.cache_resource
 def initialize_engine(api_key):
     if not api_key or "여기에" in api_key: return None
     try:
         genai.configure(api_key=api_key)
-        available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-        for target in ['gemini-3-flash', 'gemini-1.5-flash', 'flash']:
-            for m_name in available_models:
-                if target in m_name: return genai.GenerativeModel(m_name)
-        return genai.GenerativeModel(available_models[0])
+        model = genai.GenerativeModel('gemini-1.5-flash')
+        return model
     except: return None
 
 model = initialize_engine(API_KEY)
 
-# --- 3. 쇼핑 링크 생성 헬퍼 함수 (마켓컬리 연결) ---
+# --- 3. 쇼핑 링크 생성 함수 (마켓컬리) ---
 def make_shopping_links(ingredient_list):
     links_html = "<div style='margin-top:15px; text-align:center;'>"
     ingredients = [i.strip() for i in ingredient_list.split(',')[:5]]
     for item in ingredients:
         if len(item) > 1:
-            # 마켓컬리 검색 URL 구조 적용
             encoded_item = urllib.parse.quote(item)
             links_html += f"<a href='https://www.kurly.com/search?keyword={encoded_item}' target='_blank' class='shop-btn'>💜 {item} 컬리 장보기</a>"
     links_html += "</div>"
     return links_html
 
-# --- 4. 메인 UI 및 로직 ---
+# --- 4. 메인 UI (요청하신 문구를 디자인 박스 안에 넣었습니다) ---
 st.title("🍳 쿠킹클론 (Cooking Clone)")
 st.markdown("### **\"찰나의 미식, 당신의 주방에서 영원한 레시피가 됩니다.\"**")
 
-# 사용자 요청 문구 반영
+# 이 부분이 핵심입니다! st.markdown(""" ... """) 안에 넣어야 코드가 아닌 디자인으로 나옵니다.
 st.markdown("""
 <div class="report-box">
     <h4 style="color: #36454F; margin-bottom: 15px;">맛있는 요리를 발견하셨나요? <br>지금 바로 사진을 찍거나 이미지를 업로드해 보세요!</h4>
@@ -103,6 +98,7 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
+# --- 5. 이미지 분석 로직 ---
 if model:
     tab1, tab2 = st.tabs(["📸 직접 촬영", "📁 이미지 업로드"])
     source = None
@@ -133,7 +129,7 @@ if model:
                     
                     st.success("미식 해독이 완료되었습니다.")
 
-                    # --- [업그레이드: 마켓컬리 쇼핑 기능] ---
+                    # 마켓컬리 쇼핑 기능
                     st.divider()
                     if "[Ingredients:" in full_response:
                         try:
@@ -142,7 +138,6 @@ if model:
                             st.markdown(make_shopping_links(ing_part), unsafe_allow_html=True)
                         except: pass
 
-                    # 텍스트 파일 저장 버튼
                     st.download_button("📄 레시피 소장하기 (.txt)", data=full_response, file_name="cooking_clone_recipe.txt")
                 except Exception as e:
                     st.error(f"분석 중 오류가 발생했습니다: {e}")
