@@ -15,7 +15,7 @@ except:
 # --- 1. 앱 디자인 설정 (뮤트 톤 & 세련된 감성) ---
 st.set_page_config(page_title="Cooking Clone", layout="centered", page_icon="🍳")
 
-# CSS 스타일 적용 (화면 디자인을 담당합니다)
+# 디자인 스타일 적용
 st.markdown("""
     <style>
     .stApp { background-color: #DBCFBB; color: #36454F; }
@@ -28,14 +28,12 @@ st.markdown("""
     }
     .stButton>button:hover { background-color: #3e4e22; color: #E2D7C3; }
     
-    /* 리포트 박스 스타일 */
     .report-box { 
         background-color: rgba(255, 255, 255, 0.5); padding: 30px; 
         border-radius: 15px; border-left: 8px solid #556B2F; line-height: 1.8; 
         margin-bottom: 25px;
     }
     
-    /* 마켓컬리 쇼핑 버튼 스타일 */
     .shop-btn {
         display: inline-block; padding: 6px 14px; margin: 4px;
         background-color: white; border: 1px solid #5f0080;
@@ -58,7 +56,7 @@ def initialize_engine(api_key):
 
 model = initialize_engine(API_KEY)
 
-# --- 3. 쇼핑 링크 생성 함수 (마켓컬리) ---
+# --- 3. 마켓컬리 쇼핑 링크 생성 함수 ---
 def make_shopping_links(ingredient_list):
     links_html = "<div style='margin-top:15px; text-align:center;'>"
     ingredients = [i.strip() for i in ingredient_list.split(',')[:5]]
@@ -69,11 +67,11 @@ def make_shopping_links(ingredient_list):
     links_html += "</div>"
     return links_html
 
-# --- 4. 메인 UI (요청하신 문구를 디자인 박스 안에 넣었습니다) ---
+# --- 4. 메인 UI (요청하신 문구를 디자인 박스에 넣었습니다) ---
 st.title("🍳 쿠킹클론 (Cooking Clone)")
 st.markdown("### **\"찰나의 미식, 당신의 주방에서 영원한 레시피가 됩니다.\"**")
 
-# 이 부분이 핵심입니다! st.markdown(""" ... """) 안에 넣어야 코드가 아닌 디자인으로 나옵니다.
+# 이 박스 안에 모든 안내 문구가 들어있습니다.
 st.markdown("""
 <div class="report-box">
     <h4 style="color: #36454F; margin-bottom: 15px;">맛있는 요리를 발견하셨나요? <br>지금 바로 사진을 찍거나 이미지를 업로드해 보세요!</h4>
