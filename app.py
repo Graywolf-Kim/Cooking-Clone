@@ -40,13 +40,12 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# --- 핵심 수정: 에러를 방지하는 '자동 엔진 탐색기' ---
+# --- 에러를 방지하는 '자동 엔진 탐색기' ---
 @st.cache_resource
 def initialize_engine(api_key):
     if not api_key: return None
     try:
         genai.configure(api_key=api_key)
-        # 사용 가능한 모델 목록을 불러와서 가장 적합한 것을 자동으로 매칭합니다.
         models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
         for target in ['gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-pro-vision']:
             for m in models:
@@ -55,10 +54,21 @@ def initialize_engine(api_key):
     except Exception as e:
         return None
 
-# 4. 분석 로직
+# 4. 분석 로직 (카메라 촬영 탭 복구)
 if API_KEY:
     model = initialize_engine(API_KEY)
-    source = st.file_uploader("사진을 선택하세요", type=["jpg", "png", "jpeg"])
+    
+    # 두 개의 탭 생성
+    tab1, tab2 = st.tabs(["📸 직접 촬영", "📁 이미지 업로드"])
+    source = None
+    
+    with tab1:
+        cam_source = st.camera_input("요리 사진을 촬영하세요")
+        if cam_source: source = cam_source
+        
+    with tab2:
+        file_source = st.file_uploader("사진을 선택하세요", type=["jpg", "png", "jpeg"])
+        if file_source: source = file_source
     
     if source:
         img = Image.open(source)
