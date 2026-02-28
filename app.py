@@ -67,7 +67,6 @@ if API_KEY:
     with tab2:
         file_source = st.file_uploader("사진을 선택하세요", type=["jpg", "png", "jpeg"])
     
-    # 사용자가 선택한 소스 확인
     if cam_source:
         source = cam_source
     elif file_source:
@@ -81,32 +80,38 @@ if API_KEY:
             if model is None:
                 st.error("AI 엔진을 불러오지 못했습니다. API 키를 다시 확인해 주세요.")
             else:
-                report_placeholder = st.empty() # 스트리밍을 위한 빈 공간 생성
+                report_placeholder = st.empty() 
                 full_text = ""
                 
-                # 프롬프트: 시적이고 간결하게 지시
+                # 프롬프트: 사용자가 원하시는 굵고 큰 소제목 양식을 AI에게 강제합니다.
                 prompt = """
                 당신은 시적이고 세련된 미식 평론가이자 요리 연구가 '쿠킹클론'입니다.
-                마크다운 코드 기호(```)는 절대 쓰지 마세요.
-                다음 4단계를 아주 간결하고 느낌 있게 작성하세요.
+                결과물을 출력할 때 반드시 아래의 4가지 제목을 똑같이 사용해서 작성하세요. 
+                제목은 반드시 마크다운의 '###' 기호를 써서 크고 굵게 만들어야 합니다.
                 
-                1. 쿠킹클론 요리 분석: 구구절절한 설명은 빼고, 요리의 시각적 매력과 맛의 본질을 시적인 평론가 톤으로 3~4문장으로 짧고 강렬하게 표현하세요.
-                2. 한 끗 차이 비법: 핵심 비결만 2~3문장으로 임팩트 있게.
-                3. 역설계 재료: 보기 쉽게 간단한 목록으로.
-                4. 홈스타일 레시피: 집에서 따라하기 쉽게 요약된 과정으로.
+                ### 요리분석 :
+                (구구절절한 설명은 빼고, 요리의 시각적 매력과 맛의 본질을 시적인 평론가 톤으로 3~4문장으로 짧고 강렬하게 표현)
                 
-                마지막에 반드시 [Ingredients: 재료1, 재료2, 재료3, 재료4, 재료5] 형식을 포함하세요.
+                ### 한끗차이 :
+                (핵심 비결만 2~3문장으로 임팩트 있게)
+                
+                ### 역설계 재료 :
+                (보기 쉽게 간단한 목록으로)
+                
+                ### 홈스타일 레시피 :
+                (집에서 따라하기 쉽게 요약된 과정으로)
+                
+                * 마크다운 코드 블록 기호(```)는 절대 쓰지 마세요.
+                * 맨 마지막 줄에는 반드시 [Ingredients: 재료1, 재료2, 재료3, 재료4, 재료5] 형식을 포함하세요.
                 """
                 try:
-                    # 실시간 스트리밍 부활
+                    # 실시간 스트리밍
                     response = model.generate_content([prompt, img], stream=True)
                     for chunk in response:
                         full_text += chunk.text
-                        # 혹시 모를 기호 텍스트 세탁
                         clean_text = full_text.replace("```markdown", "").replace("```html", "").replace("```", "")
                         report_placeholder.markdown(f"**미식 데이터를 해독 중입니다...**\n\n---\n{clean_text}")
                     
-                    # 완료 후 선을 그어 깔끔하게 마무리
                     report_placeholder.markdown(f"---\n{clean_text}\n---")
                     
                     # 마켓컬리 쇼핑 버튼 링크 생성
@@ -117,7 +122,7 @@ if API_KEY:
                         st.markdown(f'<div style="text-align:center;">{links}</div>', unsafe_allow_html=True)
                         
                     # PDF용 HTML 리포트 소스 생성
-                    display_text = clean_text.split('[Ingredients:')[0].strip() # 재료 태그는 빼고 출력
+                    display_text = clean_text.split('[Ingredients:')[0].strip()
                     html_report = f"""
                     <!DOCTYPE html>
                     <html>
@@ -127,6 +132,7 @@ if API_KEY:
                         <style>
                             body {{ font-family: 'Malgun Gothic', sans-serif; padding: 40px; color: #333; background-color: #f9f9f9; line-height: 1.6; }}
                             h1 {{ color: #556B2F; border-bottom: 2px solid #556B2F; padding-bottom: 10px; }}
+                            h3 {{ color: #556B2F; margin-top: 20px; }}
                             pre {{ font-family: inherit; white-space: pre-wrap; word-wrap: break-word; font-size: 15px; background: #fff; padding: 25px; border-radius: 10px; border: 1px solid #ddd; }}
                         </style>
                     </head>
@@ -138,7 +144,6 @@ if API_KEY:
                     </html>
                     """
                     
-                    # 리포트 다운로드 버튼
                     st.divider()
                     st.download_button(
                         label="📄 리포트 저장하기 (웹/PDF용)", 
