@@ -10,17 +10,37 @@ try:
 except:
     API_KEY = ""
 
-# 2. 디자인 설정
+# 2. 디자인 설정 (장보기 버튼 우측 정렬 및 미니멀라이즈)
 st.set_page_config(page_title="Cooking Clone", layout="centered", page_icon="🍳")
 st.markdown("""
     <style>
     .stApp { background-color: #DBCFBB; color: #36454F; }
     h1, h2, h3 { color: #556B2F !important; font-family: 'Nanum Gothic', sans-serif; margin-bottom: 5px; }
     .intro-box { background-color: rgba(255, 255, 255, 0.5); padding: 20px 25px; border-radius: 15px; border-left: 8px solid #556B2F; line-height: 1.5; margin-top: 10px; margin-bottom: 15px; }
-    .shop-btn { display: inline-block; padding: 2px 10px; margin-left: 10px; background-color: white; border: 1px solid #5f0080; border-radius: 15px; font-size: 0.8em; text-decoration: none !important; color: #5f0080 !important; font-weight: bold; vertical-align: middle; }
-    .shop-btn:hover { background-color: #5f0080; color: white !important; }
-    /* 링크가 포함된 리스트 아이템 정렬을 위해 */
-    li { margin-bottom: 8px; }
+    
+    /* 장보기 버튼 디자인을 만개의 레시피처럼 차분하고 우측에 정렬되도록 수정 */
+    .shop-btn { 
+        float: right; 
+        padding: 2px 8px; 
+        background-color: #fafafa; 
+        border: 1px solid #e0e0e0; 
+        border-radius: 4px; 
+        font-size: 0.75em; 
+        text-decoration: none !important; 
+        color: #999 !important; 
+        font-weight: normal; 
+        margin-top: 2px;
+    }
+    .shop-btn:hover { 
+        border-color: #ccc; 
+        color: #556B2F !important; 
+        background-color: #f0f0f0;
+    }
+    
+    /* 리스트 항목 높이 및 정렬 보정 */
+    li { clear: both; line-height: 1.8; margin-bottom: 4px; }
+    
+    .stButton>button { background-color: #556B2F; color: white; border-radius: 8px; width: 100%; height: 3.5em; font-weight: bold; margin-top: 5px; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -78,12 +98,12 @@ if API_KEY:
         if model is None:
             st.error("AI 엔진을 불러오지 못했습니다. API 키를 다시 확인해 주세요.")
         else:
-            # 상태 표시 스피너 추가 (비법 복제 중 표기 및 움직임)
+            # 상태 표시 스피너
             with st.spinner("✨ 비법 복제 중... 미식 데이터를 정밀 해독하고 있습니다."):
                 report_placeholder = st.empty() 
                 full_text = ""
                 
-                # 프롬프트 수정: 내용 간략화, 2/4인분 명확화, 정량화, 링크 치환용 태그 추가
+                # 프롬프트 유지
                 prompt = """
                 당신은 시적이고 세련된 미식 평론가이자 요리 연구가 '쿠킹클론'입니다.
                 결과물을 출력할 때 반드시 아래의 4가지 제목을 똑같이 사용해서 작성하세요. 
@@ -111,19 +131,19 @@ if API_KEY:
                         full_text += chunk.text
                         clean_text = full_text.replace("```markdown", "").replace("```html", "").replace("```", "")
                         
-                        # %KURLY_LINK_재료명% 태그를 실제 HTML 버튼 링크로 정규식 치환
+                        # %KURLY_LINK_재료명% 태그를 심플한 장보기 버튼으로 치환
                         display_text = re.sub(
                             r'%KURLY_LINK_(.*?)%', 
-                            lambda m: f'<a href="https://www.kurly.com/search?keyword={urllib.parse.quote(m.group(1).strip())}" target="_blank" class="shop-btn">💜 {m.group(1).strip()} 컬리 장보기</a>', 
+                            lambda m: f'<a href="https://www.kurly.com/search?keyword={urllib.parse.quote(m.group(1).strip())}" target="_blank" class="shop-btn">장보기</a>', 
                             clean_text
                         )
                         
                         report_placeholder.markdown(f"---\n{display_text}")
                     
-                    # 최종 출력
+                    # 최종 출력 (HTML 태그 허용)
                     report_placeholder.markdown(f"---\n{display_text}\n---", unsafe_allow_html=True)
                     
-                    # PDF용 HTML 리포트 소스 생성 (버튼 디자인 등 포함)
+                    # PDF용 HTML 리포트 소스 생성
                     html_report = f"""
                     <!DOCTYPE html>
                     <html>
