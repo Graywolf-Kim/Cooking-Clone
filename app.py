@@ -4,12 +4,12 @@ from PIL import Image
 import urllib.parse
 import re
 
-# 1. API 키 설정
+# 1. API 키 설정 (오직 AI 연결에만 집중)
 try:
     API_KEY = st.secrets["API_KEY"]
     genai.configure(api_key=API_KEY)
 except:
-    API_KEY = ""
+    st.error("Streamlit Secrets에 API_KEY가 설정되지 않았습니다.")
 
 # 2. 디자인 설정
 st.set_page_config(page_title="Cooking Clone", layout="centered", page_icon="🍳")
@@ -27,7 +27,7 @@ def make_kurly_link(match):
     keyword = urllib.parse.quote(match.group(1).strip())
     return f'<a href="https://www.kurly.com/search?keyword={keyword}" target="_blank" class="shop-btn">장보기</a>'
 
-# 3. 메인 화면
+# 3. 메인 화면 및 인트로
 st.title("🍳 쿠킹클론 (Cooking Clone)")
 st.markdown('### **"찰나의 미식, 당신의 주방에서 영원한 레시피가 됩니다."**')
 
@@ -43,56 +43,48 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# 4. 사진 입력
+# 4. 사진 입력 탭
 tab1, tab2 = st.tabs(["📸 직접 촬영", "📁 이미지 업로드"])
 source = None
 with tab1: cam_source = st.camera_input("요리 사진 촬영")
 with tab2: file_source = st.file_uploader("이미지 파일 선택", type=["jpg", "png", "jpeg"])
 source = cam_source if cam_source else file_source
 
-# 5. 스마트 자동 전환 (Auto-Fallback) 분석 로직
+# 5. 초고속 스트리밍 분석 로직
 if source:
     img = Image.open(source)
     st.image(img, use_container_width=True)
     
-    if not API_KEY:
-        st.warning("Secrets 설정에서 API_KEY를 찾을 수 없습니다.")
-    else:
-        with st.spinner("✨ 비법 복제 중... 잠시만 기다려주세요."):
-            prompt = """
-            당신은 미식 평론가 '쿠킹클론'입니다. 아래 양식으로 답변하세요.
-            ### 요리분석 : (강렬한 1문장)
-            ### 한끗차이 : (핵심 비결 1문장)
-            ### 역설계 재료 (2인분 기준) : (재료 정량 표기, 끝에 %KURLY_LINK_재료명% 포함)
-            ### 홈스타일 레시피 : (번호 매긴 과정)
-            """
+    # 가장 기본적이고 안정적인 최신 모델 명시
+    model = genai.GenerativeModel('gemini-1.5-flash')
+    
+    with st.spinner("✨ 비법 복제 중... 잠시만 기다려주세요."):
+        prompt = """
+        당신은 미식 평론가 '쿠킹클론'입니다. 아래 양식으로 답변하세요.
+        ### 요리분석 : (강렬한 1문장)
+        ### 한끗차이 : (핵심 비결 1문장)
+        ### 역설계 재료 (2인분 기준) : (재료 정량 표기, 끝에 %KURLY_LINK_재료명% 포함)
+        ### 홈스타일 레시피 : (번호 매긴 과정)
+        """
+        
+        report_placeholder = st.empty()
+        full_text = ""
+        
+        try:
+            # 타자 치는 효과 (스트리밍)
+            response = model.generate_content([prompt, img], stream=True)
+            for chunk in response:
+                full_text += chunk.text
+                clean_text = full_text.replace("```markdown", "").replace("```html", "").replace("```", "")
+                report_placeholder.markdown(f"---\n{clean_text}")
             
-            report_placeholder = st.empty()
-            full_text = ""
-            response = None
+            # 장보기 버튼 변환 및 최종 출력
+            display_html = re.sub(r'%KURLY_LINK_(.*?)%', make_kurly_link, clean_text)
+            report_placeholder.markdown(f"---\n{display_html}\n---", unsafe_allow_html=True)
             
-            # [핵심] 1. 최신 모델 시도 -> 2. 실패 시 구형 모델 자동 재시도
-            try:
-                model = genai.GenerativeModel('gemini-1.5-flash')
-                response = model.generate_content([prompt, img], stream=True)
-            except Exception as e1:
-                try:
-                    model = genai.GenerativeModel('gemini-pro-vision') # 예전 API 키에도 무조건 작동하는 클래식 모델
-                    response = model.generate_content([prompt, img], stream=True)
-                except Exception as e2:
-                    st.error(f"엔진 연결에 최종 실패했습니다. API 키 상태를 확인해 주세요.")
+            # 리포트 다운로드
+            st.download_button("📄 레시피 리포트 저장 (PDF용)", data=display_html, file_name="recipe.html", mime="text/html")
             
-            # 결과 출력
-            if response:
-                try:
-                    for chunk in response:
-                        full_text += chunk.text
-                        clean_text = full_text.replace("```markdown", "").replace("```html", "").replace("```", "")
-                        report_placeholder.markdown(f"---\n{clean_text}")
-                    
-                    display_html = re.sub(r'%KURLY_LINK_(.*?)%', make_kurly_link, clean_text)
-                    report_placeholder.markdown(f"---\n{display_html}\n---", unsafe_allow_html=True)
-                    
-                    st.download_button("📄 레시피 리포트 저장 (PDF용)", data=display_html, file_name="recipe.html", mime="text/html")
-                except Exception as e3:
-                    st.error(f"결과를 화면에 뿌리는 중 오류가 발생했습니다: {e3}")
+        except Exception as e:
+            st.error(f"분석 중 오류가 발생했습니다: {e}")
+            st.info("💡 만약 이 순정 코드에서도 오류가 난다면, 방금 입력하신 API 키의 권한 문제이거나 구글 서버의 일시적 장애일 확률이 99%입니다.")
