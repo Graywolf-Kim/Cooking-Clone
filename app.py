@@ -59,7 +59,8 @@ if source:
     if not API_KEY:
         st.warning("Secrets 설정에서 API_KEY를 찾을 수 없습니다.")
     else:
-        model = genai.GenerativeModel('gemini-1.5-flash')
+        # [핵심 수정] 구글 API가 정확히 인식할 수 있도록 모델 이름에 -latest를 붙였습니다.
+        model = genai.GenerativeModel('gemini-1.5-flash-latest')
         with st.spinner("✨ 비법 복제 중... 잠시만 기다려주세요."):
             prompt = """
             당신은 미식 평론가 '쿠킹클론'입니다. 아래 양식으로 답변하세요.
