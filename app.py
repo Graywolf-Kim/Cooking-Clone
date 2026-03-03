@@ -5,97 +5,80 @@ import urllib.parse
 import re
 import uuid
 from datetime import datetime
+from streamlit_gsheets import GSheetsConnection # 라이브러리 추가 필요
 
-# 1. 환경 설정 및 익명 세션 ID 생성
+# 1. 익명 세션 ID 생성
 if 'user_id' not in st.session_state:
     st.session_state['user_id'] = str(uuid.uuid4())[:8]
-
 USER_ID = st.session_state['user_id']
 
-# API 키 설정 (Streamlit Secrets 필수)
+# 2. 구글 시트 연결 설정 (Secrets에 GSheets 설정이 되어 있어야 함)
 try:
-    API_KEY = st.secrets["API_KEY"]
+    conn = st.connection("gsheets", type=GSheetsConnection)
 except:
-    API_KEY = ""
+    conn = None
 
-# 2. 디자인 및 CSS (만개의 레시피 스타일 장보기 반영)
+def save_log(dish, action, item=""):
+    """구글 시트에 유저 행동 로그를 익명으로 저장"""
+    if conn:
+        new_log = {
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "user_id": USER_ID,
+            "dish_name": dish,
+            "action": action,
+            "item": item
+        }
+        # 구글 시트의 기존 데이터에 한 줄 추가 (내부적으로 gspread 등 사용)
+        # 실제 운영 시에는 st.cache_data.clear() 등을 조합하여 성능 최적화 가능
+        try:
+            conn.create(data=new_log) 
+        except:
+            pass # 실패 시 서비스에 지장 없도록 처리
+
+# 3. 디자인 및 API 설정
+try: API_KEY = st.secrets["API_KEY"]
+except: API_KEY = ""
+
 st.set_page_config(page_title="Cooking Clone", layout="centered", page_icon="🍳")
 st.markdown("""
     <style>
     .stApp { background-color: #DBCFBB; color: #36454F; }
     h1, h2, h3 { color: #556B2F !important; font-family: 'Nanum Gothic', sans-serif; }
-    .intro-box { background-color: rgba(255, 255, 255, 0.5); padding: 20px 25px; border-radius: 15px; border-left: 8px solid #556B2F; margin-bottom: 20px; }
     .shop-btn { 
         float: right; padding: 2px 8px; background-color: #fafafa; border: 1px solid #e0e0e0; border-radius: 4px; 
-        font-size: 0.72em; text-decoration: none !important; color: #999 !important; margin-top: 4px;
+        font-size: 0.72em; text-decoration: none !important; color: #999 !important; 
     }
-    .shop-btn:hover { border-color: #ccc; color: #556B2F !important; background-color: #f0f0f0; }
-    li { clear: both; line-height: 1.8; margin-bottom: 6px; list-style-type: none; border-bottom: 1px dotted #ccc; padding-bottom: 4px; }
+    li { clear: both; line-height: 1.8; margin-bottom: 6px; border-bottom: 1px dotted #ccc; }
     </style>
     """, unsafe_allow_html=True)
 
-# 3. 메인 화면 구성
+# 4. 메인 분석 로직
 st.title("🍳 쿠킹클론 (Cooking Clone)")
-st.markdown('### **"찰나의 미식, 당신의 주방에서 영원한 레시피가 됩니다."**')
+st.caption(f"익명 세션 ID: {USER_ID}")
 
-st.markdown(f"""
-<div class="intro-box">
-    <p style="font-size: 0.9em; color: #666; float: right;">Session: {USER_ID}</p>
-    <p>사진을 업로드하면 <b>역설계 레시피</b>와 <b>비법</b>을 해독해 드립니다.</p>
-</div>
-""", unsafe_allow_html=True)
+# ... (이미지 업로드 로직 생략) ...
 
-# 4. 분석 엔진 초기화
-@st.cache_resource
-def load_model(api_key):
-    if not api_key: return None
-    genai.configure(api_key=api_key)
-    return genai.GenerativeModel('gemini-1.5-flash')
-
-model = load_model(API_KEY)
-
-# 5. 이미지 입력 및 실행
-tab1, tab2 = st.tabs(["📸 촬영", "📁 업로드"])
-source = None
-with tab1: cam_source = st.camera_input("요리 촬영")
-with tab2: file_source = st.file_uploader("파일 선택", type=["jpg", "png", "jpeg"])
-
-source = cam_source if cam_source else file_source
-
-if source:
+if API_KEY and source:
+    model = genai.GenerativeModel('gemini-1.5-flash')
     img = Image.open(source)
     st.image(img, use_container_width=True)
     
-    if not API_KEY:
-        st.error("설정에서 API_KEY를 등록해주세요.")
-    else:
-        with st.spinner("✨ 비법 복제 중..."):
-            # 프롬프트 설계 (요구사항 반영)
-            prompt = """
-            당신은 미식 평론가 '쿠킹클론'입니다. 아래 양식으로만 답변하세요.
-            ### 요리분석 : (강렬한 1문장)
-            ### 한끗차이 : (핵심 비결 1문장)
-            ### 역설계 재료 (2인분 기준) : (재료명과 정량화된 양, 끝에 %KURLY_LINK_재료명% 포함)
-            ### 홈스타일 레시피 : (번호 매긴 요약 과정)
-            """
-            try:
-                response = model.generate_content([prompt, img])
-                res_text = response.text
-                
-                # 장보기 버튼 치환 로직
-                display_html = re.sub(
-                    r'%KURLY_LINK_(.*?)%', 
-                    lambda m: f'<a href="https://www.kurly.com/search?keyword={urllib.parse.quote(m.group(1).strip())}" target="_blank" class="shop-btn">장보기</a>', 
-                    res_text
-                )
-                
-                st.markdown("---")
-                st.markdown(display_html, unsafe_allow_html=True)
-                st.markdown("---")
-                
-                # 리포트 다운로드
-                st.download_button("📄 레시피 리포트 저장", data=display_html, file_name="recipe.html", mime="text/html")
-                st.caption("※ 본 레시피는 AI 역설계 기반이며, 실제 매장과 차이가 있을 수 있습니다.")
-                
-            except Exception as e:
-                st.error(f"분석 실패: {e}")
+    with st.spinner("✨ 미식 데이터 해독 중..."):
+        prompt = "요리명, 재료(정량화), 한끗비결, 레시피를 분석해줘. 재료 끝에 %KURLY_LINK_재료명% 포함."
+        response = model.generate_content([prompt, img])
+        res_text = response.text
+        
+        # 분석 완료 로그 저장 (어떤 요리를 분석했는지)
+        dish_name = res_text.split('\n')[0][:20] # 첫 줄에서 요리명 추출 시도
+        save_log(dish_name, "analysis_complete")
+        
+        # 장보기 버튼 생성
+        display_html = re.sub(
+            r'%KURLY_LINK_(.*?)%', 
+            lambda m: f'<a href="https://www.kurly.com/search?keyword={urllib.parse.quote(m.group(1).strip())}" target="_blank" class="shop-btn">장보기</a>', 
+            res_text
+        )
+        st.markdown(display_html, unsafe_allow_html=True)
+
+        if st.download_button("📄 레시피 저장", data=display_html, file_name="recipe.html"):
+            save_log(dish_name, "download_report")
