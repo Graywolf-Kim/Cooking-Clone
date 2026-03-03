@@ -7,20 +7,43 @@ import uuid
 from datetime import datetime
 from streamlit_gsheets import GSheetsConnection
 import pandas as pd
+import threading # 속도 해결을 위한 핵심 스레딩 라이브러리 추가
 
 # 1. 초기 설정 (익명 ID)
 if 'user_id' not in st.session_state:
     st.session_state['user_id'] = str(uuid.uuid4())[:8]
 USER_ID = st.session_state['user_id']
 
-# API 키 및 구글 시트 연결
+# API 및 DB 연결 설정
 API_KEY = st.secrets.get("API_KEY", "")
 try:
     conn = st.connection("gsheets", type=GSheetsConnection)
 except:
     conn = None
 
-# 2. 디자인 설정 (인트로 박스 감성 복구)
+# 2. 백그라운드 로깅 함수 (사용자 대기시간 0초를 위한 비동기 처리)
+def log_to_sheets_background(dish_name, action, item=""):
+    """이 함수는 메인 화면과 분리되어 뒷단에서 조용히 실행됩니다."""
+    if conn is None: return
+    try:
+        log_data = pd.DataFrame([{
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "user_id": USER_ID,
+            "dish_name": dish_name,
+            "action": action,
+            "item": item
+        }])
+        existing = conn.read(worksheet="Sheet1")
+        updated = pd.concat([existing, log_data], ignore_index=True)
+        conn.update(worksheet="Sheet1", data=updated)
+    except Exception as e:
+        print(f"Background Logging Error: {e}") # 사용자 화면엔 보이지 않음
+
+def fire_and_forget_log(dish_name, action):
+    """멀티 스레드를 실행하는 발사 버튼"""
+    threading.Thread(target=log_to_sheets_background, args=(dish_name, action)).start()
+
+# 3. 디자인 설정 및 인트로 박스
 st.set_page_config(page_title="Cooking Clone", layout="centered", page_icon="🍳")
 st.markdown("""
     <style>
@@ -32,9 +55,9 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# 3. 인트로 섹션 (기존 버전 유지)
 st.title("🍳 쿠킹클론 (Cooking Clone)")
 st.markdown('### **"찰나의 미식, 당신의 주방에서 영원한 레시피가 됩니다."**')
+
 st.markdown(f"""
 <div class="intro-box">
     <p style="font-size: 0.85em; color: #666; float: right;">ID: {USER_ID}</p>
@@ -48,14 +71,14 @@ st.markdown(f"""
 </div>
 """, unsafe_allow_html=True)
 
-# 4. 사진 입력
+# 4. 이미지 입력
 tab1, tab2 = st.tabs(["📸 직접 촬영", "📁 이미지 업로드"])
 source = None
 with tab1: cam_source = st.camera_input("요리 촬영")
 with tab2: file_source = st.file_uploader("파일 선택", type=["jpg", "png", "jpeg"])
 source = cam_source if cam_source else file_source
 
-# 5. 메인 로직 (속도 최적화: UI 우선 로드)
+# 5. 메인 로직 (스트리밍 복구 + 스레딩 로깅)
 if source:
     img = Image.open(source)
     st.image(img, use_container_width=True)
@@ -63,48 +86,31 @@ if source:
     if not API_KEY:
         st.warning("Secrets 설정에서 API_KEY를 등록해 주세요.")
     else:
-        # [핵심] 스피너 안에는 AI 분석만 넣습니다. (시트 기록 제외)
-        with st.spinner("✨ 미식 데이터 해독 중... 잠시만 기다려주세요."):
-            model = genai.GenerativeModel('gemini-1.5-flash')
-            prompt = "당신은 미식 평론가 '쿠킹클론'입니다. 요리분석, 한끗차이, 역설계 재료(2인분 정량, %KURLY_LINK_재료명% 포함), 홈스타일 레시피 순으로 답변하세요."
+        model = genai.GenerativeModel('gemini-1.5-flash')
+        # [복구] 사용자가 사랑한 스피너 문구
+        with st.spinner("✨ 비법 복제 중... 잠시만 기다려주세요."):
+            prompt = """
+            당신은 미식 평론가 '쿠킹클론'입니다. 아래 양식으로 답변하세요.
+            ### 요리분석 : (강렬한 1문장)
+            ### 한끗차이 : (핵심 비결 1문장)
+            ### 역설계 재료 (2인분 기준) : (재료 정량 표기, 끝에 %KURLY_LINK_재료명% 포함)
+            ### 홈스타일 레시피 : (번호 매긴 과정)
+            """
+            
+            report_placeholder = st.empty()
+            full_text = ""
+            
             try:
-                response = model.generate_content([prompt, img])
-                res_text = response.text
+                # [복구] 실시간 스트리밍 모드 켜기
+                response = model.generate_content([prompt, img], stream=True)
+                for chunk in response:
+                    full_text += chunk.text
+                    clean_text = full_text.replace("```markdown", "").replace("```html", "").replace("```", "")
+                    # 실시간으로 화면에 쏘아주기
+                    report_placeholder.markdown(f"---\n{clean_text}")
                 
-                # 결과 즉시 출력 (사용자가 기다리지 않게 함)
+                # 분석이 다 끝난 후, 장보기 링크 HTML 변환 처리
                 display_html = re.sub(
                     r'%KURLY_LINK_(.*?)%', 
-                    lambda m: f'<a href="https://www.kurly.com/search?keyword={urllib.parse.quote(m.group(1).strip())}" target="_blank" class="shop-btn">장보기</a>', 
-                    res_text
-                )
-                st.markdown("---")
-                st.markdown(display_html, unsafe_allow_html=True)
-                st.markdown("---")
-                
-                # 리포트 저장 버튼
-                btn_placeholder = st.empty()
-                if btn_placeholder.download_button("📄 레시피 리포트 저장 (PDF용)", data=display_html, file_name="recipe.html", mime="text/html"):
-                    # 버튼 클릭 시에만 로그 기록 시도 (성능 최적화)
-                    if conn:
-                        log_df = pd.DataFrame([{"timestamp": datetime.now(), "user_id": USER_ID, "action": "download"}])
-                        conn.update(worksheet="Sheet1", data=log_df)
-
-            except Exception as e:
-                st.error(f"분석 중 오류 발생: {e}")
-
-        # [사후 처리] 모든 UI가 출력된 후, 코드의 맨 마지막에서 조용히 기록 시도
-        if conn and 'res_text' in locals():
-            try:
-                log_data = pd.DataFrame([{
-                    "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                    "user_id": USER_ID,
-                    "dish_name": res_text[:30],
-                    "action": "analysis_view",
-                    "item": ""
-                }])
-                # 시트의 기존 데이터를 유지하며 업데이트
-                existing = conn.read(worksheet="Sheet1")
-                updated = pd.concat([existing, log_data], ignore_index=True)
-                conn.update(worksheet="Sheet1", data=updated)
-            except:
-                pass # 기록이 느려지거나 실패해도 사용자는 알 수 없음
+                    lambda m: f'<a href="[https://www.kurly.com/search?keyword=](https://www.kurly.com/search?keyword=){urllib.parse.quote(m.group(1).strip())}" target="_blank" class="shop-btn">장보기</a>', 
+                    clean
