@@ -8,40 +8,19 @@ from datetime import datetime
 from streamlit_gsheets import GSheetsConnection
 import pandas as pd
 
-# [보안 및 설정] 변수 초기화
-API_KEY = ""
-if "API_KEY" in st.secrets:
-    API_KEY = st.secrets["API_KEY"]
-
+# 1. 초기 설정 및 익명 ID 생성
 if 'user_id' not in st.session_state:
     st.session_state['user_id'] = str(uuid.uuid4())[:8]
 USER_ID = st.session_state['user_id']
 
-# [속도 최적화] 구글 시트 연결
+# API 키 및 구글 시트 연결
+API_KEY = st.secrets.get("API_KEY", "")
 try:
     conn = st.connection("gsheets", type=GSheetsConnection)
 except:
     conn = None
 
-def save_log_to_sheets(dish, action, item=""):
-    """데이터가 많아질수록 느려지는 현상을 방지하기 위해 예외처리 강화"""
-    if conn:
-        try:
-            # 매번 전체를 읽지 않고 업데이트 시도 (API 속도 한계는 존재함)
-            new_entry = pd.DataFrame([{
-                "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                "user_id": USER_ID,
-                "dish_name": dish,
-                "action": action,
-                "item": item
-            }])
-            existing_data = conn.read(worksheet="Sheet1")
-            updated_data = pd.concat([existing_data, new_entry], ignore_index=True)
-            conn.update(worksheet="Sheet1", data=updated_data)
-        except:
-            pass
-
-# [UI/UX] 스타일 설정 (예전 버전의 감성 복구)
+# 2. 디자인 설정 (인트로 박스 감성 유지)
 st.set_page_config(page_title="Cooking Clone", layout="centered", page_icon="🍳")
 st.markdown("""
     <style>
@@ -53,7 +32,7 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# [UI/UX] 1번 요구사항: 첫 화면 설명 문구 복구
+# 3. 인트로 섹션 (요청하신 대로 초기 버전 유지)
 st.title("🍳 쿠킹클론 (Cooking Clone)")
 st.markdown('### **"찰나의 미식, 당신의 주방에서 영원한 레시피가 됩니다."**')
 
@@ -70,7 +49,7 @@ st.markdown(f"""
 </div>
 """, unsafe_allow_html=True)
 
-# [입력] 사진 촬영 및 업로드
+# 4. 입력 섹션
 tab1, tab2 = st.tabs(["📸 직접 촬영", "📁 이미지 업로드"])
 source = None
 with tab1: cam_source = st.camera_input("요리 사진 촬영")
@@ -78,7 +57,7 @@ with tab2: file_source = st.file_uploader("이미지 파일 선택", type=["jpg"
 
 source = cam_source if cam_source else file_source
 
-# [실행] 분석 로직
+# 5. 메인 로직 (성능 최적화 버전)
 if source:
     img = Image.open(source)
     st.image(img, use_container_width=True)
@@ -86,21 +65,21 @@ if source:
     if not API_KEY:
         st.warning("Secrets 설정에서 API_KEY를 등록해 주세요.")
     else:
+        # [STEP 1] AI 분석 및 결과 즉시 출력 (속도 우선)
         model = genai.GenerativeModel('gemini-1.5-flash')
-        # 상태 표시 및 분석 시작
-        with st.spinner("✨ 비법 복제 중... 미식 데이터를 정밀 해독하고 있습니다."):
+        with st.spinner("✨ 비법 복제 중... 잠시만 기다려주세요."):
             prompt = """
             당신은 미식 평론가이자 요리 연구가 '쿠킹클론'입니다. 아래 양식으로만 답변하세요.
-            ### 요리분석 : (짧고 강렬한 시적 평론 1문장)
-            ### 한끗차이 : (식당 맛의 핵심 비결 1문장)
-            ### 역설계 재료 (2인분 기준) : (재료별 1T, 100g 등 정량 표기, 항목 끝에 %KURLY_LINK_재료명% 포함)
-            ### 홈스타일 레시피 : (가정용으로 요약된 단계별 과정)
+            ### 요리분석 : (강렬한 1문장)
+            ### 한끗차이 : (핵심 비결 1문장)
+            ### 역설계 재료 (2인분 기준) : (재료별 정량 표기, 항목 끝에 %KURLY_LINK_재료명% 포함)
+            ### 홈스타일 레시피 : (단계별 요약 과정)
             """
             try:
                 response = model.generate_content([prompt, img])
                 res_text = response.text
                 
-                # UI 출력 (로그 기록보다 먼저 수행하여 체감 속도 향상)
+                # 장보기 버튼 치환 및 출력
                 display_html = re.sub(
                     r'%KURLY_LINK_(.*?)%', 
                     lambda m: f'<a href="https://www.kurly.com/search?keyword={urllib.parse.quote(m.group(1).strip())}" target="_blank" class="shop-btn">장보기</a>', 
@@ -110,12 +89,26 @@ if source:
                 st.markdown(display_html, unsafe_allow_html=True)
                 st.markdown("---")
                 
-                # 다운로드 버튼 및 로그 기록
-                if st.download_button("📄 레시피 리포트 저장 (PDF용)", data=display_html, file_name="recipe.html", mime="text/html"):
-                    save_log_to_sheets(res_text[:20], "download_report")
+                # 다운로드 버튼 생성 (이 시점에서 유저는 이미 결과를 다 봄)
+                download_clicked = st.download_button("📄 레시피 리포트 저장 (PDF용)", data=display_html, file_name="recipe.html", mime="text/html")
                 
-                # 분석 완료 로그 기록 (화면 출력 후 백그라운드 느낌으로 실행)
-                save_log_to_sheets(res_text[:20], "analysis_complete")
-                
+                # [STEP 2] 사후 기록 (결과 출력 후에 실행됨)
+                if conn:
+                    # 사용자 대기 없이 내부적으로 기록 처리 시도
+                    try:
+                        log_data = pd.DataFrame([{
+                            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                            "user_id": USER_ID,
+                            "dish_name": res_text[:30].replace("#", "").strip(),
+                            "action": "download" if download_clicked else "analysis",
+                            "item": ""
+                        }])
+                        # 기존 데이터를 읽지 않고 추가만 할 수 없으므로, 쓰기 동작을 코드 맨 마지막으로 밀어넣음
+                        existing = conn.read(worksheet="Sheet1")
+                        updated = pd.concat([existing, log_data], ignore_index=True)
+                        conn.update(worksheet="Sheet1", data=updated)
+                    except:
+                        pass # 기록 지연이 발생해도 사용자는 모르게 처리
+
             except Exception as e:
                 st.error(f"분석 중 오류 발생: {e}")
