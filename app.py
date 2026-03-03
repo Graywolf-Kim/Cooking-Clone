@@ -3,49 +3,14 @@ import google.generativeai as genai
 from PIL import Image
 import urllib.parse
 import re
-import uuid
-from datetime import datetime
-from streamlit_gsheets import GSheetsConnection
-import pandas as pd
-import threading
 
-# 1. 초기 설정
-if 'user_id' not in st.session_state:
-    st.session_state['user_id'] = str(uuid.uuid4())[:8]
-USER_ID = st.session_state['user_id']
-
-API_KEY = st.secrets.get("API_KEY", "")
+# 1. API 키 설정 (구글 시트 로직 완전 삭제)
 try:
-    conn = st.connection("gsheets", type=GSheetsConnection)
-except Exception:
-    conn = None
+    API_KEY = st.secrets["API_KEY"]
+except:
+    API_KEY = ""
 
-# 2. 백그라운드 로깅 (속도 저하 방지)
-def log_to_sheets_background(dish_name, action, item=""):
-    if conn is None: return
-    try:
-        log_data = pd.DataFrame([{
-            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            "user_id": USER_ID,
-            "dish_name": dish_name,
-            "action": action,
-            "item": item
-        }])
-        existing = conn.read(worksheet="Sheet1")
-        updated = pd.concat([existing, log_data], ignore_index=True)
-        conn.update(worksheet="Sheet1", data=updated)
-    except Exception as e:
-        print(f"Background Log Error: {e}")
-
-def fire_and_forget_log(dish_name, action):
-    threading.Thread(target=log_to_sheets_background, args=(dish_name, action)).start()
-
-# 3. 안전한 장보기 링크 생성 함수 (Syntax Error 원천 차단)
-def make_kurly_link(match):
-    keyword = urllib.parse.quote(match.group(1).strip())
-    return f'<a href="https://www.kurly.com/search?keyword={keyword}" target="_blank" class="shop-btn">장보기</a>'
-
-# 4. 디자인 및 인트로 박스
+# 2. 디자인 설정 (인트로 박스와 장보기 버튼 유지)
 st.set_page_config(page_title="Cooking Clone", layout="centered", page_icon="🍳")
 st.markdown("""
     <style>
@@ -57,12 +22,17 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
+# 안전한 장보기 링크 생성 함수 (문법 에러 원천 차단)
+def make_kurly_link(match):
+    keyword = urllib.parse.quote(match.group(1).strip())
+    return f'<a href="https://www.kurly.com/search?keyword={keyword}" target="_blank" class="shop-btn">장보기</a>'
+
+# 3. 메인 화면 및 인트로
 st.title("🍳 쿠킹클론 (Cooking Clone)")
 st.markdown('### **"찰나의 미식, 당신의 주방에서 영원한 레시피가 됩니다."**')
 
-st.markdown(f"""
+st.markdown("""
 <div class="intro-box">
-    <p style="font-size: 0.85em; color: #666; float: right;">ID: {USER_ID}</p>
     <h4 style="color: #36454F; margin-top: 0; margin-bottom: 10px;">맛있는 요리를 발견하셨나요? 지금 바로 사진을 찍어보세요!</h4>
     <p style="font-size: 1.0em; color: #4F4F4F; margin-bottom: 15px;"><b>쿠킹클론</b>이 미식 데이터를 정밀하게 해독하여 조리법을 제공해 드립니다.</p>
     <div style="font-size: 0.95em;">
@@ -73,14 +43,14 @@ st.markdown(f"""
 </div>
 """, unsafe_allow_html=True)
 
-# 5. 파일 업로드 로직
+# 4. 사진 입력
 tab1, tab2 = st.tabs(["📸 직접 촬영", "📁 이미지 업로드"])
 source = None
 with tab1: cam_source = st.camera_input("요리 사진 촬영")
 with tab2: file_source = st.file_uploader("이미지 파일 선택", type=["jpg", "png", "jpeg"])
 source = cam_source if cam_source else file_source
 
-# 6. 메인 실행 로직
+# 5. 초고속 분석 로직 (스트리밍 100% 복구)
 if source:
     img = Image.open(source)
     st.image(img, use_container_width=True)
@@ -102,25 +72,19 @@ if source:
             full_text = ""
             
             try:
-                # 스트리밍 처리
+                # 스트리밍 처리 (타자 치는 효과)
                 response = model.generate_content([prompt, img], stream=True)
                 for chunk in response:
                     full_text += chunk.text
                     clean_text = full_text.replace("```markdown", "").replace("```html", "").replace("```", "")
                     report_placeholder.markdown(f"---\n{clean_text}")
                 
-                # 오류가 났던 부분을 가장 안전한 한 줄 코드로 대체
+                # HTML 버튼 변환
                 display_html = re.sub(r'%KURLY_LINK_(.*?)%', make_kurly_link, clean_text)
                 
-                # 최종 출력
+                # 최종 출력 및 리포트 저장
                 report_placeholder.markdown(f"---\n{display_html}\n---", unsafe_allow_html=True)
-                
-                # 백그라운드 기록 (빠른 속도 유지)
-                dish_preview = clean_text.split('\n')[0].replace("#", "").strip()[:30]
-                fire_and_forget_log(dish_preview, "analysis_complete")
-                
-                if st.download_button("📄 레시피 리포트 저장 (PDF용)", data=display_html, file_name="recipe.html", mime="text/html"):
-                    fire_and_forget_log(dish_preview, "download_report")
+                st.download_button("📄 레시피 리포트 저장 (PDF용)", data=display_html, file_name="recipe.html", mime="text/html")
                 
             except Exception as e:
                 st.error(f"분석 중 오류 발생: {e}")
