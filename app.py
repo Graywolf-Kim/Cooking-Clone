@@ -4,7 +4,7 @@ from PIL import Image
 import urllib.parse
 import re
 
-# 1. API 키 설정 및 엔진 시동
+# 1. API 키 설정
 try:
     API_KEY = st.secrets["API_KEY"]
     genai.configure(api_key=API_KEY)
@@ -23,12 +23,11 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# 3. 장보기 링크 생성 함수
 def make_kurly_link(match):
     keyword = urllib.parse.quote(match.group(1).strip())
     return f'<a href="https://www.kurly.com/search?keyword={keyword}" target="_blank" class="shop-btn">장보기</a>'
 
-# 4. 메인 화면 및 인트로
+# 3. 메인 화면
 st.title("🍳 쿠킹클론 (Cooking Clone)")
 st.markdown('### **"찰나의 미식, 당신의 주방에서 영원한 레시피가 됩니다."**')
 
@@ -44,14 +43,14 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# 5. 사진 입력
+# 4. 사진 입력
 tab1, tab2 = st.tabs(["📸 직접 촬영", "📁 이미지 업로드"])
 source = None
 with tab1: cam_source = st.camera_input("요리 사진 촬영")
 with tab2: file_source = st.file_uploader("이미지 파일 선택", type=["jpg", "png", "jpeg"])
 source = cam_source if cam_source else file_source
 
-# 6. 초고속 분석 로직
+# 5. 스마트 자동 전환 (Auto-Fallback) 분석 로직
 if source:
     img = Image.open(source)
     st.image(img, use_container_width=True)
@@ -59,8 +58,6 @@ if source:
     if not API_KEY:
         st.warning("Secrets 설정에서 API_KEY를 찾을 수 없습니다.")
     else:
-        # [핵심 수정] 구글 API가 정확히 인식할 수 있도록 모델 이름에 -latest를 붙였습니다.
-        model = genai.GenerativeModel('gemini-1.5-flash-latest')
         with st.spinner("✨ 비법 복제 중... 잠시만 기다려주세요."):
             prompt = """
             당신은 미식 평론가 '쿠킹클론'입니다. 아래 양식으로 답변하세요.
@@ -72,18 +69,30 @@ if source:
             
             report_placeholder = st.empty()
             full_text = ""
+            response = None
             
+            # [핵심] 1. 최신 모델 시도 -> 2. 실패 시 구형 모델 자동 재시도
             try:
+                model = genai.GenerativeModel('gemini-1.5-flash')
                 response = model.generate_content([prompt, img], stream=True)
-                for chunk in response:
-                    full_text += chunk.text
-                    clean_text = full_text.replace("```markdown", "").replace("```html", "").replace("```", "")
-                    report_placeholder.markdown(f"---\n{clean_text}")
-                
-                display_html = re.sub(r'%KURLY_LINK_(.*?)%', make_kurly_link, clean_text)
-                report_placeholder.markdown(f"---\n{display_html}\n---", unsafe_allow_html=True)
-                
-                st.download_button("📄 레시피 리포트 저장 (PDF용)", data=display_html, file_name="recipe.html", mime="text/html")
-                
-            except Exception as e:
-                st.error(f"분석 중 오류 발생: {e}")
+            except Exception as e1:
+                try:
+                    model = genai.GenerativeModel('gemini-pro-vision') # 예전 API 키에도 무조건 작동하는 클래식 모델
+                    response = model.generate_content([prompt, img], stream=True)
+                except Exception as e2:
+                    st.error(f"엔진 연결에 최종 실패했습니다. API 키 상태를 확인해 주세요.")
+            
+            # 결과 출력
+            if response:
+                try:
+                    for chunk in response:
+                        full_text += chunk.text
+                        clean_text = full_text.replace("```markdown", "").replace("```html", "").replace("```", "")
+                        report_placeholder.markdown(f"---\n{clean_text}")
+                    
+                    display_html = re.sub(r'%KURLY_LINK_(.*?)%', make_kurly_link, clean_text)
+                    report_placeholder.markdown(f"---\n{display_html}\n---", unsafe_allow_html=True)
+                    
+                    st.download_button("📄 레시피 리포트 저장 (PDF용)", data=display_html, file_name="recipe.html", mime="text/html")
+                except Exception as e3:
+                    st.error(f"결과를 화면에 뿌리는 중 오류가 발생했습니다: {e3}")
