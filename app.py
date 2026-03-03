@@ -9,7 +9,7 @@ try:
     API_KEY = st.secrets["API_KEY"]
     genai.configure(api_key=API_KEY)
 except:
-    st.error("Streamlit Secrets에 API_KEY가 없습니다. 톱니바퀴 > Secrets를 확인해주세요.")
+    st.error("Streamlit Secrets에 API_KEY가 없습니다.")
 
 # 2. 디자인 설정
 st.set_page_config(page_title="Cooking Clone", layout="centered", page_icon="🍳")
@@ -50,10 +50,13 @@ with tab1: cam_source = st.camera_input("요리 사진 촬영")
 with tab2: file_source = st.file_uploader("이미지 파일 선택", type=["jpg", "png", "jpeg"])
 source = cam_source if cam_source else file_source
 
-# 5. 스마트 우회 분석 로직
+# 5. 초고속 스트리밍 분석 로직
 if source:
     img = Image.open(source)
     st.image(img, use_container_width=True)
+    
+    # [핵심 수정] 2026년 기준 공식 최신 모델 이름으로 변경
+    model = genai.GenerativeModel('gemini-2.5-flash')
     
     with st.spinner("✨ 비법 복제 중... 잠시만 기다려주세요."):
         prompt = """
@@ -68,33 +71,19 @@ if source:
         full_text = ""
         
         try:
-            # [핵심] 구글 서버에 '이 API 키로 쓸 수 있는 모델이 뭔지' 직접 물어보고 선택합니다.
-            best_model = 'gemini-1.5-flash' # 기본값
-            try:
-                available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-                for m_name in available_models:
-                    if 'flash' in m_name or 'vision' in m_name:
-                        best_model = m_name
-                        break
-            except:
-                best_model = 'gemini-pro-vision' # 검색 실패 시 가장 구형인 기본 모델 강제 사용
-            
-            # 찾아낸 모델로 엔진 가동
-            model = genai.GenerativeModel(best_model)
+            # 타자 치는 효과 (스트리밍)
             response = model.generate_content([prompt, img], stream=True)
-            
-            # 스트리밍 (타자 효과) 출력
             for chunk in response:
                 full_text += chunk.text
                 clean_text = full_text.replace("```markdown", "").replace("```html", "").replace("```", "")
                 report_placeholder.markdown(f"---\n{clean_text}")
             
-            # 장보기 링크 변환 및 최종 출력
+            # 장보기 버튼 변환 및 최종 출력
             display_html = re.sub(r'%KURLY_LINK_(.*?)%', make_kurly_link, clean_text)
             report_placeholder.markdown(f"---\n{display_html}\n---", unsafe_allow_html=True)
             
+            # 리포트 다운로드
             st.download_button("📄 레시피 리포트 저장 (PDF용)", data=display_html, file_name="recipe.html", mime="text/html")
             
         except Exception as e:
             st.error(f"분석 중 오류 발생: {e}")
-            st.warning("💡 자동 우회까지 실패했습니다. 이는 현재 앱에 저장된 API_KEY가 정지되었거나 권한이 완전히 없는 상태임을 의미합니다.")
