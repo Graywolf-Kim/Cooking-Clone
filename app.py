@@ -4,13 +4,14 @@ from PIL import Image
 import urllib.parse
 import re
 
-# 1. API 키 설정 (구글 시트 로직 완전 삭제)
+# 1. API 키 설정 및 엔진 시동 (이 부분이 빠져서 무한 로딩이 걸렸던 것입니다!)
 try:
     API_KEY = st.secrets["API_KEY"]
+    genai.configure(api_key=API_KEY) # [핵심 복구] AI 엔진에 열쇠를 꽂는 코드
 except:
     API_KEY = ""
 
-# 2. 디자인 설정 (인트로 박스와 장보기 버튼 유지)
+# 2. 디자인 설정
 st.set_page_config(page_title="Cooking Clone", layout="centered", page_icon="🍳")
 st.markdown("""
     <style>
@@ -22,12 +23,12 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# 안전한 장보기 링크 생성 함수 (문법 에러 원천 차단)
+# 3. 장보기 링크 생성 함수 (안전 구조)
 def make_kurly_link(match):
     keyword = urllib.parse.quote(match.group(1).strip())
     return f'<a href="https://www.kurly.com/search?keyword={keyword}" target="_blank" class="shop-btn">장보기</a>'
 
-# 3. 메인 화면 및 인트로
+# 4. 메인 화면 및 인트로 (실행 즉시 노출)
 st.title("🍳 쿠킹클론 (Cooking Clone)")
 st.markdown('### **"찰나의 미식, 당신의 주방에서 영원한 레시피가 됩니다."**')
 
@@ -43,20 +44,20 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# 4. 사진 입력
+# 5. 사진 입력
 tab1, tab2 = st.tabs(["📸 직접 촬영", "📁 이미지 업로드"])
 source = None
 with tab1: cam_source = st.camera_input("요리 사진 촬영")
 with tab2: file_source = st.file_uploader("이미지 파일 선택", type=["jpg", "png", "jpeg"])
 source = cam_source if cam_source else file_source
 
-# 5. 초고속 분석 로직 (스트리밍 100% 복구)
+# 6. 초고속 분석 로직 (스트리밍)
 if source:
     img = Image.open(source)
     st.image(img, use_container_width=True)
     
     if not API_KEY:
-        st.warning("Secrets 설정에서 API_KEY를 등록해 주세요.")
+        st.warning("Secrets 설정에서 API_KEY를 찾을 수 없습니다.")
     else:
         model = genai.GenerativeModel('gemini-1.5-flash')
         with st.spinner("✨ 비법 복제 중... 잠시만 기다려주세요."):
@@ -72,19 +73,15 @@ if source:
             full_text = ""
             
             try:
-                # 스트리밍 처리 (타자 치는 효과)
+                # 스트리밍 렌더링
                 response = model.generate_content([prompt, img], stream=True)
                 for chunk in response:
                     full_text += chunk.text
                     clean_text = full_text.replace("```markdown", "").replace("```html", "").replace("```", "")
                     report_placeholder.markdown(f"---\n{clean_text}")
                 
-                # HTML 버튼 변환
+                # HTML 버튼 변환 및 최종 출력
                 display_html = re.sub(r'%KURLY_LINK_(.*?)%', make_kurly_link, clean_text)
-                
-                # 최종 출력 및 리포트 저장
                 report_placeholder.markdown(f"---\n{display_html}\n---", unsafe_allow_html=True)
-                st.download_button("📄 레시피 리포트 저장 (PDF용)", data=display_html, file_name="recipe.html", mime="text/html")
                 
-            except Exception as e:
-                st.error(f"분석 중 오류 발생: {e}")
+                st.download_button("📄 레시피 리포트 저장 (PDF용)", data=display_html, file_name="recipe.html", mime="text/html")
